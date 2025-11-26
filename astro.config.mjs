@@ -39,7 +39,7 @@ export default defineConfig({
       ],
     }),
   ],
-  site: 'https://badger.github.io',
+  site: 'https://tbries.github.io',
   base: '/',
   vite: {
     server: {
