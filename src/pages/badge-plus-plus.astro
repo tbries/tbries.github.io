@@ -3,16 +3,35 @@ import Layout from '@/layouts/Layout.astro'
 import ListingHero from '@/components/listing-hero.astro'
 ---
 
-<Layout title="Badge++" description="Interactive text input for Badger 2350">
+<Layout title="Badge++" description="Bluetooth text controller for Badger 2350">
   <ListingHero
-    eyebrow="// EXPERIMENTAL"
+    eyebrow="// BLUETOOTH CLIENT"
     title="Badge"
     titleHighlight="++"
-    description="Configure text output for your badge. Enter a short sentence and test your ideas."
+    description="Wire text to your badge via Bluetooth LE. Connect and transmit messages directly to the badge2 app."
   />
 
   <section class="container pb-20">
     <div class="max-w-3xl mx-auto space-y-8">
+      <!-- Connection Status -->
+      <article class="rounded-lg border border-border/40 bg-layer-mid/60 p-6 shadow-sm">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div id="status-indicator" class="h-3 w-3 rounded-full bg-muted-foreground/40"></div>
+            <span id="connection-status" class="font-mono text-sm uppercase tracking-[0.14em] text-muted-foreground">
+              Disconnected
+            </span>
+          </div>
+          <button
+            id="connect-btn"
+            class="px-4 py-2 border border-border/40 rounded font-mono text-sm uppercase tracking-[0.12em] text-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Connect Badge
+          </button>
+        </div>
+      </article>
+
+      <!-- Text Input -->
       <article class="rounded-lg border border-border/40 bg-layer-mid/60 p-8 shadow-sm">
         <div class="space-y-6">
           <div>
@@ -20,24 +39,33 @@ import ListingHero from '@/components/listing-hero.astro'
               for="badge-input" 
               class="block font-mono text-sm uppercase tracking-[0.14em] text-primary mb-3"
             >
-              Input Text
+              Message Text
             </label>
             <input
               type="text"
               id="badge-input"
-              class="w-full px-4 py-3 bg-background border border-border/40 rounded font-mono text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
-              placeholder="Type a short sentence..."
+              class="w-full px-4 py-3 bg-background border border-border/40 rounded font-mono text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-50"
+              placeholder="Type message for badge..."
               maxlength="100"
+              disabled
             />
           </div>
           
+          <button
+            id="send-btn"
+            class="w-full px-4 py-3 border border-border/40 rounded font-mono text-base uppercase tracking-[0.12em] text-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/60 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled
+          >
+            Transmit to Badge
+          </button>
+
           <div class="pt-4 border-t border-border/30">
             <div class="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Output Preview
+              Badge Current Text
             </div>
             <div 
-              id="output-preview" 
-              class="min-h-[100px] p-4 bg-background border border-border/40 rounded font-mono text-base text-foreground break-words"
+              id="current-text" 
+              class="min-h-[80px] p-4 bg-background border border-border/40 rounded font-mono text-base text-foreground break-words"
             >
               <span class="text-muted-foreground">--</span>
             </div>
@@ -45,28 +73,219 @@ import ListingHero from '@/components/listing-hero.astro'
         </div>
       </article>
 
-      <div class="text-center">
+      <!-- Log Output -->
+      <article class="rounded-lg border border-border/40 bg-layer-mid/60 p-6 shadow-sm">
+        <div class="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground mb-3">
+          Connection Log
+        </div>
+        <div 
+          id="log-output" 
+          class="min-h-[120px] max-h-[300px] overflow-y-auto p-4 bg-background border border-border/40 rounded font-mono text-xs text-muted-foreground space-y-1"
+        >
+          <div class="text-muted-foreground/60">System ready. Click Connect Badge to begin.</div>
+        </div>
+      </article>
+
+      <div class="text-center space-y-2">
         <p class="font-mono text-sm text-muted-foreground">
-          Max 100 characters · UTF-8 supported
+          Service UUID: 12345678-1234-5678-1234-56789abcdef0
+        </p>
+        <p class="font-mono text-sm text-muted-foreground">
+          Characteristic UUID: 12345678-1234-5678-1234-56789abcdef1
+        </p>
+        <p class="font-mono text-xs text-muted-foreground/60">
+          Requires Web Bluetooth API · Chrome/Edge recommended
         </p>
       </div>
     </div>
   </section>
 
   <script>
-    const input = document.getElementById('badge-input') as HTMLInputElement
-    const output = document.getElementById('output-preview') as HTMLElement
+    // Bluetooth Service and Characteristic UUIDs
+    const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0'
+    const CHAR_UUID = '12345678-1234-5678-1234-56789abcdef1'
+    const DEVICE_NAME = 'badge2-text'
 
-    if (input && output) {
-      input.addEventListener('input', () => {
-        const value = input.value.trim()
-        if (value) {
-          output.textContent = value
-          output.classList.remove('text-muted-foreground')
-        } else {
-          output.innerHTML = '<span class="text-muted-foreground">--</span>'
-        }
-      })
+    // UI Elements
+    const connectBtn = document.getElementById('connect-btn') as HTMLButtonElement
+    const sendBtn = document.getElementById('send-btn') as HTMLButtonElement
+    const input = document.getElementById('badge-input') as HTMLInputElement
+    const currentText = document.getElementById('current-text') as HTMLElement
+    const statusIndicator = document.getElementById('status-indicator') as HTMLElement
+    const connectionStatus = document.getElementById('connection-status') as HTMLElement
+    const logOutput = document.getElementById('log-output') as HTMLElement
+
+    // State
+    let device: BluetoothDevice | null = null
+    let characteristic: BluetoothRemoteGATTCharacteristic | null = null
+    let isConnected = false
+
+    // Logging
+    function log(message: string, type: 'info' | 'success' | 'error' = 'info') {
+      const timestamp = new Date().toLocaleTimeString()
+      const colorClass = type === 'success' ? 'text-primary' : type === 'error' ? 'text-red-400' : 'text-muted-foreground'
+      const entry = document.createElement('div')
+      entry.className = colorClass
+      entry.textContent = `[${timestamp}] ${message}`
+      logOutput.appendChild(entry)
+      logOutput.scrollTop = logOutput.scrollHeight
     }
+
+    // Update UI state
+    function updateConnectionState(connected: boolean) {
+      isConnected = connected
+      
+      if (connected) {
+        statusIndicator.className = 'h-3 w-3 rounded-full bg-primary shadow-[0_0_8px_rgba(95,237,131,0.6)]'
+        connectionStatus.textContent = 'Connected'
+        connectionStatus.className = 'font-mono text-sm uppercase tracking-[0.14em] text-primary'
+        connectBtn.textContent = 'Disconnect'
+        input.disabled = false
+        sendBtn.disabled = false
+      } else {
+        statusIndicator.className = 'h-3 w-3 rounded-full bg-muted-foreground/40'
+        connectionStatus.textContent = 'Disconnected'
+        connectionStatus.className = 'font-mono text-sm uppercase tracking-[0.14em] text-muted-foreground'
+        connectBtn.textContent = 'Connect Badge'
+        input.disabled = true
+        sendBtn.disabled = true
+        currentText.innerHTML = '<span class="text-muted-foreground">--</span>'
+      }
+    }
+
+    // Check Web Bluetooth support
+    if (!navigator.bluetooth) {
+      log('Web Bluetooth API not available. Use Chrome or Edge.', 'error')
+      connectBtn.disabled = true
+      connectBtn.textContent = 'BT Unavailable'
+    }
+
+    // Connect to badge
+    async function connectToBadge() {
+      try {
+        log('Scanning for badge2-text...')
+        
+        // Request device
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: DEVICE_NAME }],
+          optionalServices: [SERVICE_UUID]
+        })
+
+        log(`Found device: ${device.name}`)
+
+        // Set up disconnect handler
+        device.addEventListener('gattserverdisconnected', () => {
+          log('Device disconnected', 'error')
+          updateConnectionState(false)
+          characteristic = null
+        })
+
+        // Connect to GATT server
+        log('Connecting to GATT server...')
+        const server = await device.gatt!.connect()
+        log('GATT server connected', 'success')
+
+        // Get service
+        log('Discovering text service...')
+        const service = await server.getPrimaryService(SERVICE_UUID)
+        log('Service discovered', 'success')
+
+        // Get characteristic
+        log('Getting text characteristic...')
+        characteristic = await service.getCharacteristic(CHAR_UUID)
+        log('Characteristic ready', 'success')
+
+        // Read current text
+        await readCurrentText()
+
+        updateConnectionState(true)
+        log('Connection established', 'success')
+
+      } catch (error) {
+        log(`Connection error: ${error}`, 'error')
+        updateConnectionState(false)
+      }
+    }
+
+    // Disconnect from badge
+    async function disconnectFromBadge() {
+      if (device && device.gatt?.connected) {
+        device.gatt.disconnect()
+        log('Disconnected from badge')
+      }
+      updateConnectionState(false)
+      characteristic = null
+      device = null
+    }
+
+    // Read current text from badge
+    async function readCurrentText() {
+      if (!characteristic) {
+        log('No characteristic available', 'error')
+        return
+      }
+
+      try {
+        log('Reading current text from badge...')
+        const value = await characteristic.readValue()
+        const text = new TextDecoder().decode(value)
+        currentText.textContent = text || '--'
+        currentText.className = 'min-h-[80px] p-4 bg-background border border-border/40 rounded font-mono text-base text-foreground break-words'
+        log(`Current text: "${text}"`, 'info')
+      } catch (error) {
+        log(`Read error: ${error}`, 'error')
+      }
+    }
+
+    // Send text to badge
+    async function sendTextToBadge() {
+      if (!characteristic) {
+        log('Not connected to badge', 'error')
+        return
+      }
+
+      const text = input.value.trim()
+      if (!text) {
+        log('No text to send', 'error')
+        return
+      }
+
+      try {
+        log(`Transmitting: "${text}"`)
+        const encoder = new TextEncoder()
+        const data = encoder.encode(text)
+        await characteristic.writeValue(data)
+        log('Text transmitted successfully', 'success')
+
+        // Read back to confirm
+        await readCurrentText()
+
+        // Clear input
+        input.value = ''
+
+      } catch (error) {
+        log(`Transmission error: ${error}`, 'error')
+      }
+    }
+
+    // Event listeners
+    connectBtn.addEventListener('click', async () => {
+      if (isConnected) {
+        await disconnectFromBadge()
+      } else {
+        await connectToBadge()
+      }
+    })
+
+    sendBtn.addEventListener('click', async () => {
+      await sendTextToBadge()
+    })
+
+    // Send on Enter key
+    input.addEventListener('keypress', async (e) => {
+      if (e.key === 'Enter' && isConnected) {
+        await sendTextToBadge()
+      }
+    })
   </script>
 </Layout>
