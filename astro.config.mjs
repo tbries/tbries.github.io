@@ -11,7 +11,6 @@ const prettyCodeOptions = {
     light: 'github-light'
   },
   keepBackground: false,
-  transformers: [],
   onVisitLine(node) {
     // Prevent lines from collapsing in `display: grid` mode, and allow empty
     // lines to be copy/pasted
@@ -25,7 +24,6 @@ const prettyCodeOptions = {
   onVisitHighlightedChars(node) {
     node.properties.className = ['chars--highlighted'];
   },
-  filterMetaString: (string) => string.replace(/filename="[^"]*"/, ''),
 };
 
 // https://astro.build/config
