@@ -1,0 +1,72 @@
+---
+import Layout from '@/layouts/Layout.astro'
+import ListingHero from '@/components/listing-hero.astro'
+---
+
+<Layout title="Badge++" description="Interactive text input for Badger 2350">
+  <ListingHero
+    eyebrow="// EXPERIMENTAL"
+    title="Badge"
+    titleHighlight="++"
+    description="Configure text output for your badge. Enter a short sentence and test your ideas."
+  />
+
+  <section class="container pb-20">
+    <div class="max-w-3xl mx-auto space-y-8">
+      <article class="rounded-lg border border-border/40 bg-layer-mid/60 p-8 shadow-sm">
+        <div class="space-y-6">
+          <div>
+            <label 
+              for="badge-input" 
+              class="block font-mono text-sm uppercase tracking-[0.14em] text-primary mb-3"
+            >
+              Input Text
+            </label>
+            <input
+              type="text"
+              id="badge-input"
+              class="w-full px-4 py-3 bg-background border border-border/40 rounded font-mono text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
+              placeholder="Type a short sentence..."
+              maxlength="100"
+            />
+          </div>
+          
+          <div class="pt-4 border-t border-border/30">
+            <div class="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground mb-3">
+              Output Preview
+            </div>
+            <div 
+              id="output-preview" 
+              class="min-h-[100px] p-4 bg-background border border-border/40 rounded font-mono text-base text-foreground break-words"
+            >
+              <span class="text-muted-foreground">--</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <div class="text-center">
+        <p class="font-mono text-sm text-muted-foreground">
+          Max 100 characters · UTF-8 supported
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const input = document.getElementById('badge-input') as HTMLInputElement
+    const output = document.getElementById('output-preview') as HTMLElement
+
+    if (input && output) {
+      input.addEventListener('input', () => {
+        const value = input.value.trim()
+        if (value) {
+          output.textContent = value
+          output.classList.remove('text-muted-foreground')
+        } else {
+          output.innerHTML = '<span class="text-muted-foreground">--</span>'
+        }
+      })
+    }
+  </script>
+</Layout>
