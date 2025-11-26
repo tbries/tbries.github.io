@@ -323,13 +323,24 @@ import ListingHero from '@/components/listing-hero.astro'
         const encoder = new TextEncoder()
         const data = encoder.encode(JSON.stringify(payload))
         
-        // Check payload size and log warning if potentially too large
-        // BLE default MTU is 23 bytes (20 payload + 3 header), though many devices support more
-        log(`Payload size: ${data.length} bytes`, 'info')
+        // For larger payloads, manually chunk the data
+        // Each chunk must use writeValueWithResponse to trigger written() event on badge
+        const MTU_SIZE = 20  // Conservative MTU size
         
-        // Use writeValueWithResponse for reliability with longer payloads
-        // This ensures the write completes even if it requires multiple packets
-        await textCharacteristic.writeValueWithResponse(data)
+        if (data.length <= MTU_SIZE) {
+          // Small payload - single write
+          await textCharacteristic.writeValueWithResponse(data)
+        } else {
+          // Large payload - chunk it manually and send each chunk
+          for (let offset = 0; offset < data.length; offset += MTU_SIZE) {
+            const chunk = data.slice(offset, offset + MTU_SIZE)
+            // Must use writeValueWithResponse so badge's written() event fires
+            await textCharacteristic.writeValueWithResponse(chunk)
+            // Small delay to ensure badge processes each chunk
+            await new Promise(resolve => setTimeout(resolve, 100))
+          }
+        }
+        
         log('Text transmitted successfully', 'success')
 
         // Read back to confirm
