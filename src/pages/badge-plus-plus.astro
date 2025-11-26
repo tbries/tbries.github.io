@@ -31,6 +31,33 @@ import ListingHero from '@/components/listing-hero.astro'
         </div>
       </article>
 
+      <!-- Password Input -->
+      <article class="rounded-lg border border-border/40 bg-layer-mid/60 p-8 shadow-sm">
+        <div class="space-y-4">
+          <div>
+            <label 
+              for="password-input" 
+              class="block font-mono text-sm uppercase tracking-[0.14em] text-primary mb-3"
+            >
+              Badge Password
+            </label>
+            <input
+              type="text"
+              id="password-input"
+              class="w-full px-4 py-3 bg-background border border-border/40 rounded font-mono text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all uppercase"
+              placeholder="A7K2"
+              maxlength="4"
+              value=""
+            />
+          </div>
+          <div class="flex items-start gap-3 pt-2">
+            <div class="font-mono text-xs text-muted-foreground leading-relaxed">
+              Enter 4-character password from badge screen or scan QR code. Password is read automatically on connection.
+            </div>
+          </div>
+        </div>
+      </article>
+
       <!-- Text Input -->
       <article class="rounded-lg border border-border/40 bg-layer-mid/60 p-8 shadow-sm">
         <div class="space-y-6">
@@ -91,7 +118,10 @@ import ListingHero from '@/components/listing-hero.astro'
           Service UUID: 12345678-1234-5678-1234-56789abcdef0
         </p>
         <p class="font-mono text-sm text-muted-foreground">
-          Characteristic UUID: 12345678-1234-5678-1234-56789abcdef1
+          Text Char: 12345678-1234-5678-1234-56789abcdef1
+        </p>
+        <p class="font-mono text-sm text-muted-foreground">
+          Password Char: 12345678-1234-5678-1234-56789abcdef2
         </p>
         <p class="font-mono text-xs text-muted-foreground/60">
           Requires Web Bluetooth API · Chrome/Edge recommended
@@ -103,13 +133,15 @@ import ListingHero from '@/components/listing-hero.astro'
   <script>
     // Bluetooth Service and Characteristic UUIDs
     const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0'
-    const CHAR_UUID = '12345678-1234-5678-1234-56789abcdef1'
+    const TEXT_CHAR_UUID = '12345678-1234-5678-1234-56789abcdef1'
+    const PASSWORD_CHAR_UUID = '12345678-1234-5678-1234-56789abcdef2'
     const DEVICE_NAME = 'badge2-text'
 
     // UI Elements
     const connectBtn = document.getElementById('connect-btn') as HTMLButtonElement
     const sendBtn = document.getElementById('send-btn') as HTMLButtonElement
     const input = document.getElementById('badge-input') as HTMLInputElement
+    const passwordInput = document.getElementById('password-input') as HTMLInputElement
     const currentText = document.getElementById('current-text') as HTMLElement
     const statusIndicator = document.getElementById('status-indicator') as HTMLElement
     const connectionStatus = document.getElementById('connection-status') as HTMLElement
@@ -117,8 +149,23 @@ import ListingHero from '@/components/listing-hero.astro'
 
     // State
     let device: BluetoothDevice | null = null
-    let characteristic: BluetoothRemoteGATTCharacteristic | null = null
+    let textCharacteristic: BluetoothRemoteGATTCharacteristic | null = null
+    let passwordCharacteristic: BluetoothRemoteGATTCharacteristic | null = null
+    let badgePassword: string = ''
     let isConnected = false
+
+    // Check for password in URL params
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlPassword = urlParams.get('password')
+    if (urlPassword) {
+      passwordInput.value = urlPassword.toUpperCase()
+      log(`Password loaded from URL: ${urlPassword}`, 'success')
+    }
+
+    // Auto-uppercase password input
+    passwordInput.addEventListener('input', () => {
+      passwordInput.value = passwordInput.value.toUpperCase()
+    })
 
     // Logging
     function log(message: string, type: 'info' | 'success' | 'error' = 'info') {
@@ -177,7 +224,9 @@ import ListingHero from '@/components/listing-hero.astro'
         device.addEventListener('gattserverdisconnected', () => {
           log('Device disconnected', 'error')
           updateConnectionState(false)
-          characteristic = null
+          textCharacteristic = null
+          passwordCharacteristic = null
+          badgePassword = ''
         })
 
         // Connect to GATT server
@@ -190,10 +239,14 @@ import ListingHero from '@/components/listing-hero.astro'
         const service = await server.getPrimaryService(SERVICE_UUID)
         log('Service discovered', 'success')
 
-        // Get characteristic
-        log('Getting text characteristic...')
-        characteristic = await service.getCharacteristic(CHAR_UUID)
-        log('Characteristic ready', 'success')
+        // Get characteristics
+        log('Getting characteristics...')
+        textCharacteristic = await service.getCharacteristic(TEXT_CHAR_UUID)
+        passwordCharacteristic = await service.getCharacteristic(PASSWORD_CHAR_UUID)
+        log('Characteristics ready', 'success')
+
+        // Read password from badge
+        await readBadgePassword()
 
         // Read current text
         await readCurrentText()
@@ -214,20 +267,45 @@ import ListingHero from '@/components/listing-hero.astro'
         log('Disconnected from badge')
       }
       updateConnectionState(false)
-      characteristic = null
+      textCharacteristic = null
+      passwordCharacteristic = null
+      badgePassword = ''
       device = null
+    }
+
+    // Read password from badge
+    async function readBadgePassword() {
+      if (!passwordCharacteristic) {
+        log('No password characteristic available', 'error')
+        return
+      }
+
+      try {
+        log('Reading badge password...')
+        const value = await passwordCharacteristic.readValue()
+        badgePassword = new TextDecoder().decode(value)
+        log(`Badge password: ${badgePassword}`, 'success')
+        
+        // If user hasn't entered a password, use the badge's password
+        if (!passwordInput.value.trim()) {
+          passwordInput.value = badgePassword
+          log('Password auto-filled from badge', 'info')
+        }
+      } catch (error) {
+        log(`Password read error: ${error}`, 'error')
+      }
     }
 
     // Read current text from badge
     async function readCurrentText() {
-      if (!characteristic) {
-        log('No characteristic available', 'error')
+      if (!textCharacteristic) {
+        log('No text characteristic available', 'error')
         return
       }
 
       try {
         log('Reading current text from badge...')
-        const value = await characteristic.readValue()
+        const value = await textCharacteristic.readValue()
         const text = new TextDecoder().decode(value)
         currentText.textContent = text || '--'
         currentText.className = 'min-h-[80px] p-4 bg-background border border-border/40 rounded font-mono text-base text-foreground break-words'
@@ -239,7 +317,7 @@ import ListingHero from '@/components/listing-hero.astro'
 
     // Send text to badge
     async function sendTextToBadge() {
-      if (!characteristic) {
+      if (!textCharacteristic) {
         log('Not connected to badge', 'error')
         return
       }
@@ -250,11 +328,29 @@ import ListingHero from '@/components/listing-hero.astro'
         return
       }
 
+      const password = passwordInput.value.trim()
+      if (!password) {
+        log('Password required. Enter 4-character password.', 'error')
+        return
+      }
+
+      if (password.length !== 4) {
+        log('Password must be exactly 4 characters', 'error')
+        return
+      }
+
       try {
         log(`Transmitting: "${text}"`)
+        
+        // Prepare authenticated payload
+        const payload = {
+          password: password,
+          text: text
+        }
+        
         const encoder = new TextEncoder()
-        const data = encoder.encode(text)
-        await characteristic.writeValue(data)
+        const data = encoder.encode(JSON.stringify(payload))
+        await textCharacteristic.writeValue(data)
         log('Text transmitted successfully', 'success')
 
         // Read back to confirm
@@ -265,6 +361,7 @@ import ListingHero from '@/components/listing-hero.astro'
 
       } catch (error) {
         log(`Transmission error: ${error}`, 'error')
+        log('Check password or connection status', 'error')
       }
     }
 
