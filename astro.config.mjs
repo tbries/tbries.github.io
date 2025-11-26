@@ -39,8 +39,8 @@ export default defineConfig({
       ],
     }),
   ],
-  site: 'https://badger.github.io',
-  base: '/',
+  site: 'https://tbries.github.io',
+  base: '/badger_badger.github.io',
   vite: {
     server: {
       // Disable caching in dev mode
